@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "451303415856",
+    "project_id": "isu-sundaycollege",
+    "storage_bucket": "isu-sundaycollege.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:451303415856:android:384e04dfe2167d91f08df5",
+        "android_client_info": {
+          "package_name": "com.example.isusundaycollege"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "451303415856-eogbhk2vbbt3gqcv6t6gonvnfamm55q4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.isusundaycollege",
+            "certificate_hash": "e535dd77b5706f0b324e8f93279f39c257d3fa32"
+          }
+        },
+        {
+          "client_id": "451303415856-rbigqrv47bk0burnn2jl588k324gie6h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7ye6ce5Qdh5CVz_lzqy_dtAaVS7qzD2s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "451303415856-rbigqrv47bk0burnn2jl588k324gie6h.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
