@@ -23,10 +23,6 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var googleSignInClient: GoogleSignInClient
     private val RC_SIGN_IN = 9001
 
-    companion object {
-        private const val TAG = "LoginActivity"
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLoginBinding.inflate(layoutInflater)
@@ -78,10 +74,10 @@ class LoginActivity : AppCompatActivity() {
             val task = GoogleSignIn.getSignedInAccountFromIntent(data)
             try {
                 val account = task.getResult(ApiException::class.java)
-                Log.d(TAG, "firebaseAuthWithGoogle:" + account.id)
+                Log.d("LoginActivity", "аутентификация через google :" + account.id)
                 firebaseAuthWithGoogle(account.idToken!!)
             } catch (e: ApiException) {
-                Log.w(TAG, "Google sign in failed", e)
+                Log.w("LoginActivity", "вход через google неудачный", e)
                 Toast.makeText(this, "Ошибка входа через Google: код ${e.statusCode}",
                     Toast.LENGTH_SHORT).show()
             }
@@ -100,7 +96,7 @@ class LoginActivity : AppCompatActivity() {
                         startActivity(Intent(this, testActivity::class.java))
                         finish()
                     } else {
-                        Toast.makeText(this, "Авторизация не удалась: ${task.exception?.message}",
+                        Toast.makeText(this, "Авторизация не удалась: Неверные данные",
                             Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -112,14 +108,14 @@ class LoginActivity : AppCompatActivity() {
         auth.signInWithCredential(credential)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    Log.d(TAG, "signInWithCredential:success")
+                    Log.d("LoginActivity", "credential прошел")
                     val user = auth.currentUser
                     Toast.makeText(this, "Вход через Google выполнен успешно",
                         Toast.LENGTH_SHORT).show()
                     startActivity(Intent(this, testActivity::class.java))
                     finish()
                 } else {
-                    Log.w(TAG, "signInWithCredential:failure", task.exception)
+                    Log.w("LoginActivity", "ошибка входа через credential", task.exception)
                     Toast.makeText(this, "Ошибка входа через Google: ${task.exception?.message}",
                         Toast.LENGTH_SHORT).show()
                     updateUI(null)
@@ -150,9 +146,9 @@ class LoginActivity : AppCompatActivity() {
 
     private fun updateUI(user: com.google.firebase.auth.FirebaseUser?) {
         if (user != null) {
-            Log.d(TAG, "User is signed in: ${user.email}")
+            Log.d("LoginActivity", "Пользователь вошел в систему: ${user.email}")
         } else {
-            Log.d(TAG, "User is signed out")
+            Log.d("LoginActivity", "Пользователь вышел из системы")
         }
     }
 }

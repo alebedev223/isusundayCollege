@@ -2,33 +2,34 @@ package com.example.isusundaycollege
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayoutMediator
+import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.google.android.material.progressindicator.CircularProgressIndicator
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.ktx.Firebase
 
 class CoursesActivity : AppCompatActivity() {
 
-    private lateinit var viewPager: ViewPager2
-    private lateinit var tabLayout: TabLayout
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var progressIndicator: CircularProgressIndicator
+    private val coursesList = mutableListOf<Course>()
+    private lateinit var adapter: CoursesAdapter
+    private var userRole: String = "student"
+    private var userId: String = ""
+    private lateinit var addCourseButton: FloatingActionButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +38,8 @@ class CoursesActivity : AppCompatActivity() {
         FirebaseDatabase.getInstance("https://isu-sundaycollege-default-rtdb.europe-west1.firebasedatabase.app/").getReference(".info/connected").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val connected = snapshot.getValue(Boolean::class.java) ?: false
-                Log.d("CoursesActivity", "Firebase подключение: ${if (connected) "активно" else "отсутствует"}")
+                if (connected) Log.d("CoursesActivity", "Firebase подключение активно")
+                else Log.d("CoursesActivity", "Firebase подключение отсутсвует")
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -46,84 +48,100 @@ class CoursesActivity : AppCompatActivity() {
         })
 
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setNavigationOnClickListener {
-            onBackPressed()
+            val intent = Intent(this@CoursesActivity, testActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(intent)
+            finish()
         }
 
-        viewPager = findViewById(R.id.viewPager)
-        tabLayout = findViewById(R.id.tabLayout)
-
-        val pagerAdapter = CoursesPagerAdapter(this)
-        viewPager.adapter = pagerAdapter
-        TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> getString(R.string.available_courses)
-                1 -> getString(R.string.unavailable_courses)
-                else -> null
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val intent = Intent(this@CoursesActivity, testActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                startActivity(intent)
+                finish()
             }
-        }.attach()
+        })
 
-    }
+        recyclerView = findViewById(R.id.coursesRecyclerView)
+        progressIndicator = findViewById(R.id.progressIndicator)
+        addCourseButton = findViewById(R.id.addCourseButton)
 
-    private inner class CoursesPagerAdapter(activity: AppCompatActivity) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = 2
-
-        override fun createFragment(position: Int): Fragment {
-            return when (position) {
-                0 -> CoursesListFragment(true)
-                1 -> CoursesListFragment(false)
-                else -> CoursesListFragment(true)
-            }
+        addCourseButton.setOnClickListener {
+            val intent = Intent(this, AddCourseActivity::class.java)
+            startActivity(intent)
         }
-    }
-}
 
-class CoursesListFragment(val isAvailable: Boolean) : Fragment() {
-
-    private lateinit var recyclerView: RecyclerView
-    private val coursesList = mutableListOf<Course>()
-    private lateinit var adapter: CoursesAdapter
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        return inflater.inflate(R.layout.fragment_courses_list, container, false)
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        recyclerView = view.findViewById(R.id.coursesRecyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.setHasFixedSize(true)
 
         adapter = CoursesAdapter(coursesList) { courseId ->
-            val intent = Intent(requireActivity(), AttendanceActivity::class.java)
-            intent.putExtra("COURSE_ID", courseId)
-            startActivity(intent)
+            val course = coursesList.find { it.id == courseId }
+            if (course != null && course.isAvailable) {
+                val intent = Intent(this, AttendanceActivity::class.java)
+                intent.putExtra("COURSE_ID", courseId)
+                startActivity(intent)
+            } else {
+                Toast.makeText(this, "Этот курс недоступен", Toast.LENGTH_SHORT).show()
+            }
         }
 
         recyclerView.adapter = adapter
 
-        loadCourses()
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            userId = currentUser.uid
+            checkUserRole()
+        } else {
+            Toast.makeText(this, "Вы не авторизованы", Toast.LENGTH_SHORT).show()
+            finish()
+        }
+    }
+
+    private fun checkUserRole() {
+        showLoading(true)
+        val fbDb = FirebaseDatabase.getInstance("https://isu-sundaycollege-default-rtdb.europe-west1.firebasedatabase.app/")
+        val database = fbDb.reference
+
+        database.child("users").child(userId).child("role")
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    userRole = snapshot.getValue(String::class.java) ?: "student"
+                    loadCourses()
+                    addCourseButton.visibility = if (userRole == "Администратор" || userRole == "Преподаватель") {
+                        View.VISIBLE
+                    } else {
+                        View.GONE
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("CoursesActivity", "Ошибка проверки роли: ${error.message}")
+                    showLoading(false)
+                    Toast.makeText(this@CoursesActivity, "Ошибка загрузки данных", Toast.LENGTH_SHORT).show()
+                }
+            })
     }
 
     private fun loadCourses() {
-        Log.d("CoursesFragment", "Начало загрузки курсов. isAvailable=$isAvailable")
+        Log.d("CoursesActivity", "Начало загрузки курсов")
         val fbDb = FirebaseDatabase.getInstance("https://isu-sundaycollege-default-rtdb.europe-west1.firebasedatabase.app/")
         val database = fbDb.reference
+
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
         database.child("courses").addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                Log.d("CoursesFragment", "onDataChange вызван")
+                Log.d("CoursesActivity", "onDataChange вызван")
 
                 if (!snapshot.exists()) {
-                    Log.d("CoursesFragment", "Данные о курсах отсутствуют")
+                    Log.d("CoursesActivity", "Данные о курсах отсутствуют")
+                    showLoading(false)
                     return
                 }
 
-                Log.d("CoursesFragment", "Количество курсов: ${snapshot.childrenCount}")
+                Log.d("CoursesActivity", "Количество курсов: ${snapshot.childrenCount}")
 
                 coursesList.clear()
 
@@ -131,72 +149,172 @@ class CoursesListFragment(val isAvailable: Boolean) : Fragment() {
                     val courseId = courseSnapshot.key ?: continue
                     val name = courseSnapshot.child("name").getValue(String::class.java) ?: "Без названия"
 
-                    Log.d("CoursesFragment", "Обрабатываем курс: $courseId - $name")
+                    val isCourseAvailable = courseSnapshot.child("isAvailable").getValue(Boolean::class.java) ?: true
 
-                    val course = Course(
-                        id = courseId,
-                        name = name,
-                        teacher = "Преподаватель",
-                        description = "Описание курса $name",
-                        isAvailable = isAvailable
-                    )
+                    val teacherId = courseSnapshot.child("teacher").getValue(String::class.java) ?: ""
 
-                    coursesList.add(course)
+                    if (isCourseAvailable) {
+                        if (userRole == "Администратор") {
+                            if (teacherId.isNotEmpty()) {
+                                getTeacherName(courseId, name, teacherId, isCourseAvailable)
+                            } else {
+                                val course = Course(
+                                    id = courseId,
+                                    name = name,
+                                    teacher = "Преподаватель не назначен",
+                                    description = courseSnapshot.child("description").getValue(String::class.java) ?: "Описание курса $name",
+                                    isAvailable = isCourseAvailable
+                                )
+                                coursesList.add(course)
+                            }
+                        }
+                        else if (userRole == "Преподаватель") {
+                            if (teacherId == currentUserId) {
+                                if (teacherId.isNotEmpty()) {
+                                    getTeacherName(courseId, name, teacherId, isCourseAvailable)
+                                } else {
+                                    val course = Course(
+                                        id = courseId,
+                                        name = name,
+                                        teacher = "Преподаватель не назначен",
+                                        description = courseSnapshot.child("description").getValue(String::class.java) ?: "Описание курса $name",
+                                        isAvailable = isCourseAvailable
+                                    )
+                                    coursesList.add(course)
+                                }
+                            }
+                        }
+                        else {
+                            if (teacherId.isNotEmpty()) {
+                                getTeacherName(courseId, name, teacherId, isCourseAvailable)
+                            } else {
+                                val course = Course(
+                                    id = courseId,
+                                    name = name,
+                                    teacher = "Преподаватель не назначен",
+                                    description = courseSnapshot.child("description").getValue(String::class.java) ?: "Описание курса $name",
+                                    isAvailable = isCourseAvailable
+                                )
+                                coursesList.add(course)
+                            }
+                        }
+                    }
                 }
 
-                Log.d("CoursesFragment", "Добавлено курсов: ${coursesList.size}")
+                if (snapshot.childrenCount.toInt() == coursesList.size) {
+                    showLoading(false)
+                }
+
                 adapter.notifyDataSetChanged()
+
+                if (coursesList.isEmpty()) {
+                    Log.d("CoursesActivity", "Не найдено курсов для отображения")
+                    showLoading(false)
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Log.e("CoursesFragment", "Ошибка загрузки курсов: ${error.message}")
+                Log.e("CoursesActivity", "Ошибка загрузки курсов: ${error.message}")
+                showLoading(false)
+                Toast.makeText(this@CoursesActivity, "Ошибка загрузки курсов", Toast.LENGTH_SHORT).show()
             }
         })
     }
 
+    private fun getTeacherName(courseId: String, courseName: String, teacherId: String, isAvailable: Boolean) {
+        val database = FirebaseDatabase.getInstance("https://isu-sundaycollege-default-rtdb.europe-west1.firebasedatabase.app/").reference
+        database.child("users").child(teacherId).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val teacherName = snapshot.child("name").getValue(String::class.java) ?: ""
+                val course = Course(
+                    id = courseId,
+                    name = courseName,
+                    teacher = teacherName,
+                    description = snapshot.child("description").getValue(String::class.java) ?: "Описание курса $courseName",
+                    isAvailable = isAvailable
+                )
+                coursesList.add(course)
+                adapter.notifyDataSetChanged()
 
-class CoursesAdapter(
-    private val courses: List<Course>,
-    private val onCourseClick: (String) -> Unit
-) : RecyclerView.Adapter<CoursesAdapter.CourseViewHolder>() {
+                if (coursesList.isNotEmpty()) {
+                    showLoading(false)
+                }
+            }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CourseViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_course, parent, false)
-        return CourseViewHolder(view)
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("CoursesActivity", "Ошибка получения данных преподавателя: ${error.message}")
+
+                val course = Course(
+                    id = courseId,
+                    name = courseName,
+                    teacher = "Преподаватель",
+                    description = "Описание курса $courseName",
+                    isAvailable = isAvailable
+                )
+                coursesList.add(course)
+                adapter.notifyDataSetChanged()
+
+                if (coursesList.isNotEmpty()) {
+                    showLoading(false)
+                }
+            }
+        })
     }
 
-    override fun onBindViewHolder(holder: CourseViewHolder, position: Int) {
-        val course = courses[position]
-        holder.bind(course)
+    private fun showLoading(isLoading: Boolean) {
+        if (isLoading) {
+            progressIndicator.visibility = View.VISIBLE
+            recyclerView.visibility = View.GONE
+        } else {
+            progressIndicator.visibility = View.GONE
+            recyclerView.visibility = View.VISIBLE
+        }
     }
 
-    override fun getItemCount(): Int = courses.size
+    class CoursesAdapter(
+        private val courses: List<Course>,
+        private val onCourseClick: (String) -> Unit
+    ) : RecyclerView.Adapter<CoursesAdapter.CourseViewHolder>() {
 
-    inner class CourseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val nameText: TextView = itemView.findViewById(R.id.courseNameText)
-        private val teacherText: TextView = itemView.findViewById(R.id.courseTeacherText)
-        private val descriptionText: TextView = itemView.findViewById(R.id.courseDescriptionText)
-        private val statusText: TextView = itemView.findViewById(R.id.courseStatusText)
-        private val actionButton: MaterialButton = itemView.findViewById(R.id.courseActionButton)
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CourseViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_course, parent, false)
+            return CourseViewHolder(view)
+        }
 
-        fun bind(course: Course) {
-            nameText.text = course.name
-            teacherText.text = course.teacher
-            descriptionText.text = course.description
-            statusText.text = if (course.isAvailable) "В процессе" else "Недоступно"
+        override fun onBindViewHolder(holder: CourseViewHolder, position: Int) {
+            val course = courses[position]
+            holder.bind(course)
+        }
 
-            actionButton.setOnClickListener {
-                onCourseClick(course.id)
+        override fun getItemCount(): Int = courses.size
+
+        inner class CourseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val nameText: TextView = itemView.findViewById(R.id.courseNameText)
+            private val teacherText: TextView = itemView.findViewById(R.id.courseTeacherText)
+            private val descriptionText: TextView = itemView.findViewById(R.id.courseDescriptionText)
+            private val statusText: TextView = itemView.findViewById(R.id.courseStatusText)
+            private val actionButton: MaterialButton = itemView.findViewById(R.id.courseActionButton)
+
+            fun bind(course: Course) {
+                nameText.text = course.name
+                teacherText.text = course.teacher
+                descriptionText.text = course.description
+                statusText.text = "В процессе"
+                actionButton.text = "Посещаемость"
+                actionButton.isEnabled = true
+                actionButton.setOnClickListener {
+                    onCourseClick(course.id)
+                }
             }
         }
     }
-}
 
-data class Course(
-    val id: String,
-    val name: String,
-    val teacher: String,
-    val description: String,
-    val isAvailable: Boolean
-)}
+    data class Course(
+        val id: String,
+        val name: String,
+        val teacher: String,
+        val description: String,
+        val isAvailable: Boolean
+    )
+}
